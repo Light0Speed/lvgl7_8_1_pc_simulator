@@ -55,7 +55,7 @@ lv_indev_t *kb_indev;
 
 
 
-lv_signal_cb_t signal_cb;lv_signal_t
+lv_signal_cb_t signal_cb;
 static lv_res_t my_test_btn_singal_cb(lv_obj_t * obj, lv_signal_t sign, void * param)
 {
 	signal_cb(obj, sign, param);
