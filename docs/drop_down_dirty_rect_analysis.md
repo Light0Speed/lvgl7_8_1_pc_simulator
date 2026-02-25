@@ -154,17 +154,50 @@ lv_obj_set_y(drop_down_panel, act_pt.y - 600)  // 比如 y=-595
 脏矩形⑥: y=0~5      (panel 新位置可见部分)
 ```
 
-### 1.5 脏块的真正原因
+### 1.5 脏块的真正原因：`_lv_disp_pop_from_inv_buf`
 
-**不是 tileview 覆盖了 panel**。LVGL 按对象树从底到顶绘制，panel 在最上面画，不会被 tileview 覆盖。
+如果 scrollable 产生的所有脏矩形（①②③④）都保留在 buffer 中，求并集确实是 `y=0~599` 全屏覆盖，理论上不会有脏块。
 
-**真正的问题是：panel 移动后露出的 tileview 区域没有被 invalidate，旧的 panel 像素残留在那里。**
+**但 LVGL 的 `indev_drag` 函数有一个优化：如果拖拽后对象坐标"没变"，就把期间产生的脏矩形全部撤销。**
 
-具体来说：
-1. scrollable 在一帧内被 `lv_obj_set_pos` 改了两次（推走+锁回），这本身产生的脏矩形虽然大部分能互相覆盖
-2. tileview 在锁回时触发了 **edge flash 动画**，在**后续帧**中持续 invalidate 的区域很小（只有闪光条），不覆盖 panel 的移动轨迹
-3. panel 在后续帧中继续跟手移动，`lv_obj_set_y(panel)` 标记的脏矩形只覆盖 panel 自身的旧位置和新位置
-4. **scrollable 的子对象（如 time_lbl）在 panel 移动经过的区域需要重绘（因为 panel 从上面划过去了），但没有人 invalidate 这块区域** → 旧的 panel 像素残留 → 脏块
+```c
+// lv_indev.c:1366-1383
+uint16_t inv_buf_size = lv_disp_get_inv_buf_size(disp); // 记录当前脏矩形数量
+
+lv_obj_set_pos(drag_obj, act_x, act_y);  // 内部会产生多个脏矩形
+
+// 如果对象坐标没有实际变化 → 撤销所有新增的脏矩形
+if(drag_obj->coords.x1 == prev_x && drag_obj->coords.y1 == prev_y) {
+    uint16_t new_inv_buf_size = lv_disp_get_inv_buf_size(disp);
+    _lv_disp_pop_from_inv_buf(disp, new_inv_buf_size - inv_buf_size);
+}
+```
+
+执行过程：
+
+```
+inv_buf_size = 0（记录当前脏矩形数量）
+
+lv_obj_set_pos(scrollable, -800, 5):
+  ├── invalidate(旧 y=0) → 脏矩形①  → buffer = 1
+  ├── coords 改为 y=5
+  ├── COORD_CHG → tileview 锁回 lv_obj_set_y(scrl, 0):
+  │   ├── invalidate(y=5) → 脏矩形②  → buffer = 2
+  │   ├── coords 改回 y=0
+  │   └── invalidate(y=0) → 脏矩形③  → buffer = 3
+  └── invalidate(新 y=0) → 脏矩形④  → buffer = 4
+
+检查: coords.y1(=0) == prev_y(=0)?  → YES！（被 tileview 锁回了）
+★ _lv_disp_pop_from_inv_buf(disp, 4) → 脏矩形①②③④全部从 buffer 中删除！
+
+然后我们的代码:
+lv_obj_set_y(panel, -595) → 脏矩形⑤(旧位置) + 脏矩形⑥(y=0~5)
+
+帧末 buffer 中只有: ⑤(屏幕外) + ⑥(y=0~5)
+scrollable 的 0~599 完全没有脏矩形 → 不重绘 → 旧 panel 像素残留 → 脏块
+```
+
+**一句话：不是脏矩形并集不够大，而是 `indev_drag` 发现 scrollable 坐标"没变"（被 tileview 锁回了），调用 `_lv_disp_pop_from_inv_buf` 把它们全部从 buffer 里删除了。**
 
 ### 1.6 渲染顺序说明
 
