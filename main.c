@@ -340,9 +340,21 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
          * 修复：检测到下拉手势 或 panel 已存在时，跳过 ancestor，
          * 让 scrollable 完全静止，只移动 panel。
          */
+        bool on_home_page = ((LAUNCHER_HOR_SLIDING_LOOP_MODE && tileview_ext->act_id.x == 1 && tileview_ext->act_id.y == 0) ||
+                             (!LAUNCHER_HOR_SLIDING_LOOP_MODE && tileview_ext->act_id.x == 0 && tileview_ext->act_id.y == 0));
+
+        /*
+         * Prefer a direct vector check on the home page instead of waiting for
+         * gesture classification, otherwise the first few PRESSING frames can
+         * still enter ancestor tileview logic and trigger edge-flash invalidates.
+         */
+        bool downward_pull = (indev->proc.types.pointer.vect.y > 0) &&
+                             (LV_MATH_ABS(indev->proc.types.pointer.vect.y) >= LV_MATH_ABS(indev->proc.types.pointer.vect.x));
+
         bool is_dropdown = (drop_down_panel != NULL) ||
-                           ((drag_dir & LV_DRAG_DIR_VER) &&
-                            lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM);
+                           (on_home_page &&
+                            ((drag_dir & LV_DRAG_DIR_VER) || downward_pull) &&
+                            lv_indev_get_gesture_dir(indev) != LV_GESTURE_DIR_TOP);
 
         if(is_dropdown) {
             /*
