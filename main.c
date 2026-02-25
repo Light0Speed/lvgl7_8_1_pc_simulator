@@ -74,6 +74,7 @@ static void menu_btn_event_cb(lv_obj_t * btn, lv_event_t e);
 static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id);
 
 /* drop-down bar */
+static void fix_children_coords(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy);
 static void drop_down_bar_create(void);
 static void drop_down_bar_fill_content(lv_obj_t * parent);
 static void drop_down_show_anim_cb(void * var, lv_anim_value_t val);
@@ -278,6 +279,22 @@ static void launcher_leds_update(lv_obj_t * tileview)
                    LV_VER_RES - lv_obj_get_height(leds_content) - 5);
 }
 
+/**
+ * Recursively fix coords of all descendants without triggering invalidate.
+ * Mirrors refresh_children_position in lv_obj.c but silent (no signals, no invalidate).
+ */
+static void fix_children_coords(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy)
+{
+    lv_obj_t * child;
+    _LV_LL_READ(obj->child_ll, child) {
+        child->coords.x1 += dx;
+        child->coords.y1 += dy;
+        child->coords.x2 += dx;
+        child->coords.y2 += dy;
+        fix_children_coords(child, dx, dy);
+    }
+}
+
 /**********************
  *  launcher_tileview_scrl_signal
  *  Ported from launcher.c lines 325-462
@@ -329,16 +346,28 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
 
         if(is_dropdown) {
             /*
-             * 不调用 ancestor → 无 edge flash、无多余 invalidate。
+             * 不调用 ancestor → 无 edge flash。
              *
-             * 但 lv_indev_proc 在发出 COORD_CHG 之前已经移动了 scrollable 的坐标，
-             * 跳过 ancestor 同时跳过了其中的位置约束代码。
-             * 必须手动把 scrollable 锁回正确位置，否则 tileview 内容会跟着动。
+             * lv_indev_proc 在发 COORD_CHG 之前已经通过 lv_obj_set_pos 移动了
+             * scrollable，该函数内部做了:
+             *   invalidate(旧) → 改 coords → refresh_children_position → COORD_CHG → invalidate(新)
+             *
+             * 如果我们再用 lv_obj_set_pos 锁回去，会再触发同样的 invalidate 链，
+             * 每帧 scrollable 被推走又拉回来 = 6 次无效 invalidate → 脏块。
+             *
+             * 修复：直接写 coords 把 scrollable 静默归位，绕过 lv_obj_set_pos，
+             * 零额外 invalidate。scrollable 的子对象 coords 也要同步修正。
              */
-            lv_coord_t lock_x = -tileview_ext->act_id.x * lv_obj_get_width(tileview);
-            lv_coord_t lock_y = -tileview_ext->act_id.y * lv_obj_get_height(tileview);
-            if(lv_obj_get_x(tile_scrl) != lock_x || lv_obj_get_y(tile_scrl) != lock_y) {
-                lv_obj_set_pos(tile_scrl, lock_x, lock_y);
+            lv_coord_t target_x = tileview->coords.x1 + (-tileview_ext->act_id.x * lv_obj_get_width(tileview));
+            lv_coord_t target_y = tileview->coords.y1 + (-tileview_ext->act_id.y * lv_obj_get_height(tileview));
+            lv_coord_t dx = target_x - tile_scrl->coords.x1;
+            lv_coord_t dy = target_y - tile_scrl->coords.y1;
+            if(dx != 0 || dy != 0) {
+                tile_scrl->coords.x1 += dx;
+                tile_scrl->coords.y1 += dy;
+                tile_scrl->coords.x2 += dx;
+                tile_scrl->coords.y2 += dy;
+                fix_children_coords(tile_scrl, dx, dy);
             }
 
             lv_indev_get_point(indev, &act_pt);
