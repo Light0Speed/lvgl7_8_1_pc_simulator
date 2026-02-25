@@ -325,22 +325,33 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
             }
         }
 
-        /* ---- Vertical gesture: trigger drop-down bar ---- */
+        /* ---- Vertical gesture: drop-down bar follows finger ---- */
         if(drag_dir & LV_DRAG_DIR_VER) {
-            bool on_home = (LAUNCHER_HOR_SLIDING_LOOP_MODE && tileview_ext->act_id.x == 1) ||
-                           (!LAUNCHER_HOR_SLIDING_LOOP_MODE && tileview_ext->act_id.x == 0);
-            if(on_home && drop_down_panel == NULL) {
-                lv_indev_get_point(indev, &act_pt);
-                if(act_pt.y < LAUNCHER_DROP_DOWN_START &&
-                   lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
+            lv_indev_get_point(indev, &act_pt);
+            if(lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
+                if(drop_down_panel == NULL) {
                     drop_down_bar_create();
-                    return LV_RES_OK;
                 }
+                if(drop_down_panel != NULL) {
+                    lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
+                }
+                return LV_RES_OK;
             }
         }
         return LV_RES_OK;
 
     } else if(LV_SIGNAL_PRESS_LOST == sign || LV_SIGNAL_RELEASED == sign) {
+        if(drop_down_panel != NULL) {
+            lv_indev_t * indev = lv_indev_get_act();
+            if(indev != NULL) {
+                lv_indev_get_point(indev, &act_pt);
+                if(act_pt.y >= LV_VER_RES / 2) {
+                    drop_down_snap_back();
+                } else {
+                    drop_down_dismiss();
+                }
+            }
+        }
         return LV_RES_OK;
 
     } else if(LV_SIGNAL_DRAG_END == sign) {
@@ -525,17 +536,6 @@ static void drop_down_bar_create(void)
     lv_obj_set_signal_cb(lv_page_get_scrollable(page), drop_down_scrl_signal_cb);
 
     drop_down_bar_fill_content(page);
-
-    lv_anim_t a;
-    lv_anim_init(&a);
-    lv_anim_set_var(&a, drop_down_panel);
-    lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)drop_down_show_anim_cb);
-    lv_anim_set_values(&a, -LV_VER_RES, 0);
-    lv_anim_set_time(&a, DROP_DOWN_ANIM_TIME);
-    static lv_anim_path_t path_ease_out;
-    path_ease_out.cb = lv_anim_path_ease_out;
-    lv_anim_set_path(&a, &path_ease_out);
-    lv_anim_start(&a);
     printf("Drop-down panel created\n");
 }
 
