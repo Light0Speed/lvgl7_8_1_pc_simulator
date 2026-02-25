@@ -368,6 +368,13 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                 tile_scrl->coords.x2 += dx;
                 tile_scrl->coords.y2 += dy;
                 fix_children_coords(tile_scrl, dx, dy);
+
+                /*
+                 * We silently reset scrollable coords to avoid tileview edge-flash
+                 * side effects, but we still need one explicit invalidate so the
+                 * renderer repaints the corrected background in the same frame.
+                 */
+                lv_obj_invalidate(tileview);
             }
 
             lv_indev_get_point(indev, &act_pt);
