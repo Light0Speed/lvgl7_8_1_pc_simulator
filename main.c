@@ -462,10 +462,17 @@ static lv_obj_t * menu_add_btn(lv_obj_t * tab, int8_t menu_index, int8_t btn_id,
     lv_obj_t * cont = lv_obj_get_child(tab, NULL);
     if(cont == NULL) return NULL;
 
+    /*
+     * tab's parent = scrollable (tileview internal), scrollable's parent = tileview.
+     * Original code uses lv_obj_get_parent(tab) but that gives the scrollable,
+     * not the tileview. Go up one more level to reach the actual tileview.
+     */
+    lv_obj_t * tileview = lv_obj_get_parent(lv_obj_get_parent(tab));
+
     lv_obj_t * btn = lv_btn_create(cont, NULL);
     lv_obj_set_size(btn, 120, 120);
     lv_obj_set_event_cb(btn, event_cb);
-    lv_tileview_add_element(lv_obj_get_parent(tab), btn);
+    lv_tileview_add_element(tileview, btn);
 
     lv_obj_t * icon = lv_label_create(btn, NULL);
     lv_obj_set_style_local_text_font(icon, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_28);
