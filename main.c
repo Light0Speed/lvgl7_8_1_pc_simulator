@@ -296,7 +296,8 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
        sign != LV_SIGNAL_COORD_CHG &&
        sign != LV_SIGNAL_PRESS_LOST &&
        sign != LV_SIGNAL_RELEASED &&
-       sign != LV_SIGNAL_DRAG_END) {
+       sign != LV_SIGNAL_DRAG_END &&
+       sign != LV_SIGNAL_DRAG_THROW_BEGIN) {
         return ancestor_tileview_scrl_signal(tile_scrl, sign, param);
     }
 
@@ -360,7 +361,26 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
         }
         return LV_RES_OK;
 
-    } else if(LV_SIGNAL_DRAG_END == sign) {
+    } else if(LV_SIGNAL_DRAG_END == sign || LV_SIGNAL_DRAG_THROW_BEGIN == sign) {
+        /*
+         * 当手指按在 date_lbl/time_lbl 上下拉时：
+         * RELEASED 信号发给 indev_obj_act (= date_lbl)，不是 scrollable，
+         * 所以上面的 RELEASED 分支收不到。
+         * 但 DRAG_THROW_BEGIN 发给 get_dragged_obj() = scrollable，能收到。
+         */
+        if(drop_down_panel != NULL) {
+            drop_down_refr_task_stop();
+            lv_indev_t * indev = lv_indev_get_act();
+            if(indev != NULL) {
+                lv_indev_get_point(indev, &act_pt);
+                if(act_pt.y >= LV_VER_RES / 2) {
+                    drop_down_snap_back();
+                } else {
+                    drop_down_dismiss();
+                }
+            }
+            lv_indev_finish_drag(indev);
+        }
         return LV_RES_OK;
     }
 
