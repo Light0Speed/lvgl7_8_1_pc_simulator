@@ -328,7 +328,19 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                             lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM);
 
         if(is_dropdown) {
-            /* 不调用 ancestor → scrollable 不动、无 edge flash、无多余 invalidate */
+            /*
+             * 不调用 ancestor → 无 edge flash、无多余 invalidate。
+             *
+             * 但 lv_indev_proc 在发出 COORD_CHG 之前已经移动了 scrollable 的坐标，
+             * 跳过 ancestor 同时跳过了其中的位置约束代码。
+             * 必须手动把 scrollable 锁回正确位置，否则 tileview 内容会跟着动。
+             */
+            lv_coord_t lock_x = -tileview_ext->act_id.x * lv_obj_get_width(tileview);
+            lv_coord_t lock_y = -tileview_ext->act_id.y * lv_obj_get_height(tileview);
+            if(lv_obj_get_x(tile_scrl) != lock_x || lv_obj_get_y(tile_scrl) != lock_y) {
+                lv_obj_set_pos(tile_scrl, lock_x, lock_y);
+            }
+
             lv_indev_get_point(indev, &act_pt);
             if(drop_down_panel == NULL) {
                 drop_down_bar_create();
