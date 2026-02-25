@@ -516,7 +516,12 @@ static void drop_down_bar_create(void)
 {
     if(drop_down_panel != NULL) return;
 
-    drop_down_panel = lv_obj_create(lv_scr_act(), NULL);
+    /*
+     * ★ 创建在 layer_top 上而非 lv_scr_act()。
+     * 根因：下拉时 tileview scrollable 也在被拖拽改坐标，两者同时 invalidate
+     * 导致脏矩形交叉→残影/不全。layer_top 有独立的渲染层，避免此问题。
+     */
+    drop_down_panel = lv_obj_create(lv_disp_get_layer_top(NULL), NULL);
     lv_obj_set_size(drop_down_panel, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_y(drop_down_panel, -LV_VER_RES);
     lv_obj_set_style_local_bg_color(drop_down_panel, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT,
