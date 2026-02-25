@@ -292,7 +292,8 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
        sign != LV_SIGNAL_COORD_CHG &&
        sign != LV_SIGNAL_PRESS_LOST &&
        sign != LV_SIGNAL_RELEASED &&
-       sign != LV_SIGNAL_DRAG_END) {
+       sign != LV_SIGNAL_DRAG_END &&
+       sign != LV_SIGNAL_DRAG_THROW_BEGIN) {
         return ancestor_tileview_scrl_signal(tile_scrl, sign, param);
     }
 
@@ -301,12 +302,45 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
     lv_point_t act_pt;
     lv_drag_dir_t drag_dir;
 
-    ancestor_tileview_scrl_signal(tile_scrl, sign, param);
-
     if((LV_SIGNAL_PRESSING == sign) || (LV_SIGNAL_COORD_CHG == sign)) {
         lv_indev_t * indev = lv_indev_get_act();
-        if(indev == NULL) return LV_RES_OK;
+        if(indev == NULL) {
+            ancestor_tileview_scrl_signal(tile_scrl, sign, param);
+            return LV_RES_OK;
+        }
         drag_dir = indev->proc.types.pointer.drag_dir;
+
+        /*
+         * ★ 关键修复：当处于下拉模式时，不调用 ancestor_tileview_scrl_signal。
+         *
+         * 脏块根因链：
+         *   ancestor 被调用 → lv_tileview_scrl_signal(COORD_CHG)
+         *   → scrollable 被垂直拖拽 → drag_top_en==0 → lv_obj_set_y(scrl, snap_back)
+         *   → lv_obj_set_pos() 内部做两次 lv_obj_invalidate (旧+新位置)
+         *   → lv_page_start_edge_flash() → 又触发 edge flash 动画 invalidate
+         *   → 与 drop_down_panel 的 invalidate 在同一帧交叉 → 脏块
+         *
+         * 修复：检测到下拉手势 或 panel 已存在时，跳过 ancestor，
+         * 让 scrollable 完全静止，只移动 panel。
+         */
+        bool is_dropdown = (drop_down_panel != NULL) ||
+                           ((drag_dir & LV_DRAG_DIR_VER) &&
+                            lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM);
+
+        if(is_dropdown) {
+            /* 不调用 ancestor → scrollable 不动、无 edge flash、无多余 invalidate */
+            lv_indev_get_point(indev, &act_pt);
+            if(drop_down_panel == NULL) {
+                drop_down_bar_create();
+            }
+            if(drop_down_panel != NULL) {
+                lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
+            }
+            return LV_RES_OK;
+        }
+
+        /* 非下拉模式 → 正常调用 ancestor 处理 tileview 滑动 */
+        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
 
         /* ---- Horizontal loop logic ---- */
         if((drag_dir & LV_DRAG_DIR_HOR) && LAUNCHER_HOR_SLIDING_LOOP_MODE) {
@@ -324,20 +358,6 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                 }
             }
         }
-
-        /* ---- Vertical gesture: drop-down bar follows finger ---- */
-        if(drag_dir & LV_DRAG_DIR_VER) {
-            lv_indev_get_point(indev, &act_pt);
-            if(lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
-                if(drop_down_panel == NULL) {
-                    drop_down_bar_create();
-                }
-                if(drop_down_panel != NULL) {
-                    lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
-                }
-                return LV_RES_OK;
-            }
-        }
         return LV_RES_OK;
 
     } else if(LV_SIGNAL_PRESS_LOST == sign || LV_SIGNAL_RELEASED == sign) {
@@ -351,11 +371,24 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                     drop_down_dismiss();
                 }
             }
+            /* 结束拖拽，让 indev 不再继续抛掷 scrollable */
+            lv_indev_finish_drag(lv_indev_get_act());
+            return LV_RES_OK;
         }
+        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
         return LV_RES_OK;
 
-    } else if(LV_SIGNAL_DRAG_END == sign) {
+    } else if(LV_SIGNAL_DRAG_END == sign || LV_SIGNAL_DRAG_THROW_BEGIN == sign) {
+        if(drop_down_panel != NULL) {
+            /* 下拉模式下吞掉 drag_end/throw，不让 tileview 处理 */
+            lv_indev_finish_drag(lv_indev_get_act());
+            return LV_RES_OK;
+        }
+        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
         return LV_RES_OK;
+
+    } else {
+        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
     }
 
     return LV_RES_OK;
