@@ -412,7 +412,7 @@ static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id)
     lv_label_set_text(date_lbl, "Wed, Feb 25");
     lv_obj_align(date_lbl, time_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_tileview_add_element(tileview, date_lbl);
-    lv_obj_set_click(date_lbl, true);
+    //lv_obj_set_click(date_lbl, true);
     lv_obj_t * hint = lv_label_create(tab, NULL);
     lv_obj_set_style_local_text_color(hint, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT,
                                       LV_COLOR_MAKE(0x90, 0x90, 0x90));
