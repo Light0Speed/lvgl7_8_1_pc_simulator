@@ -312,6 +312,14 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
         lv_indev_t * indev = lv_indev_get_act();
         if(indev == NULL) return LV_RES_OK;
         drag_dir = indev->proc.types.pointer.drag_dir;
+        if(drop_down_panel != NULL || (drag_dir & LV_DRAG_DIR_VER)) {
+            uint16_t inv_now = lv_disp_get_inv_buf_size(lv_disp_get_default());
+            printf("[HANDLER] sign=%s drag_dir=%d panel=%p inv_buf=%d gesture=%d\n",
+                   sign == LV_SIGNAL_PRESSING ? "PRESSING" : "COORD_CHG",
+                   drag_dir, drop_down_panel, inv_now,
+                   lv_indev_get_gesture_dir(indev));
+        }
+
 
         /* ---- Horizontal loop logic ---- */
         if((drag_dir & LV_DRAG_DIR_HOR) && LAUNCHER_HOR_SLIDING_LOOP_MODE) {
@@ -404,7 +412,7 @@ static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id)
     lv_label_set_text(date_lbl, "Wed, Feb 25");
     lv_obj_align(date_lbl, time_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_tileview_add_element(tileview, date_lbl);
-
+    lv_obj_set_click(date_lbl, true);
     lv_obj_t * hint = lv_label_create(tab, NULL);
     lv_obj_set_style_local_text_color(hint, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT,
                                       LV_COLOR_MAKE(0x90, 0x90, 0x90));
