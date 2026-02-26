@@ -136,7 +136,11 @@ void _lv_inv_area(lv_disp_t * disp, const lv_area_t * area_p)
         /*Save only if this area is not in one of the saved areas*/
         uint16_t i;
         for(i = 0; i < disp->inv_p; i++) {
-            if(_lv_area_is_in(&com_area, &disp->inv_areas[i], 0) != false) return;
+            if(_lv_area_is_in(&com_area, &disp->inv_areas[i], 0) != false) 
+            {
+                LV_LOG_INFO("is in area[%u] = (%d,%d)-(%d,%d)", (unsigned int)i, disp->inv_areas[i].x1, disp->inv_areas[i].y1, disp->inv_areas[i].x2, disp->inv_areas[i].y2);
+                return;
+            }    
         }
 
         /*Save the area*/
