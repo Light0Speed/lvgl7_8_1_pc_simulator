@@ -336,7 +336,7 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
             if(lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
                 if(drop_down_panel == NULL) {
                     drop_down_bar_create();
-                    drop_down_refr_task_start();
+                    //drop_down_refr_task_start();
                 }
                 if(drop_down_panel != NULL) {
                     lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);

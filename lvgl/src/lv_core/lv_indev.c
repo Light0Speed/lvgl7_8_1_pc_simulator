@@ -1385,10 +1385,10 @@ static void indev_drag(lv_indev_proc_t * proc)
 
                     if(new_inv_buf_size >= inv_buf_size) {
                         uint16_t i;
-                        for(i = inv_buf_size; i < new_inv_buf_size; i++) {
+                        for(i = 0; i < new_inv_buf_size; i++) {
                             const lv_area_t * inv_area = &indev_act->driver.disp->inv_areas[i];
-                            LV_LOG_INFO("pending refresh area[%u] = (%d,%d)-(%d,%d)", (unsigned int)i, (int)inv_area->x1,
-                                        (int)inv_area->y1, (int)inv_area->x2, (int)inv_area->y2);
+                            LV_LOG_INFO("pending refresh area[%u] = (%d,%d)-(%d,%d)  ydif:%d", (unsigned int)i, (int)inv_area->x1,
+                                        (int)inv_area->y1, (int)inv_area->x2, (int)inv_area->y2, inv_area->y2 - inv_area->y1);
                         }
                     }
                     else {
@@ -1397,6 +1397,12 @@ static void indev_drag(lv_indev_proc_t * proc)
                     }
 
                     _lv_disp_pop_from_inv_buf(indev_act->driver.disp, pop_cnt);
+                    new_inv_buf_size = lv_disp_get_inv_buf_size(indev_act->driver.disp);
+                    for(int i = 0; i < new_inv_buf_size; i++) {
+                        const lv_area_t * inv_area = &indev_act->driver.disp->inv_areas[i];
+                        LV_LOG_INFO("@@@  pending refresh area[%u] = (%d,%d)-(%d,%d)  ydif:%d", (unsigned int)i, (int)inv_area->x1,
+                                    (int)inv_area->y1, (int)inv_area->x2, (int)inv_area->y2, inv_area->y2 - inv_area->y1);
+                    }
                 }
             }
 
