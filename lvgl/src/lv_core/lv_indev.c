@@ -1378,7 +1378,25 @@ static void indev_drag(lv_indev_proc_t * proc)
                 lv_coord_t act_par_h = lv_obj_get_height(lv_obj_get_parent(drag_obj));
                 if(act_par_w == prev_par_w && act_par_h == prev_par_h) {
                     uint16_t new_inv_buf_size = lv_disp_get_inv_buf_size(indev_act->driver.disp);
-                    _lv_disp_pop_from_inv_buf(indev_act->driver.disp, new_inv_buf_size - inv_buf_size);
+                    uint16_t pop_cnt = new_inv_buf_size - inv_buf_size;
+
+                    LV_LOG_INFO("_lv_disp_pop_from_inv_buf before call: inv_buf_size=%u, new_inv_buf_size=%u, pop_cnt=%u",
+                                (unsigned int)inv_buf_size, (unsigned int)new_inv_buf_size, (unsigned int)pop_cnt);
+
+                    if(new_inv_buf_size >= inv_buf_size) {
+                        uint16_t i;
+                        for(i = inv_buf_size; i < new_inv_buf_size; i++) {
+                            const lv_area_t * inv_area = &indev_act->driver.disp->inv_areas[i];
+                            LV_LOG_INFO("pending refresh area[%u] = (%d,%d)-(%d,%d)", (unsigned int)i, (int)inv_area->x1,
+                                        (int)inv_area->y1, (int)inv_area->x2, (int)inv_area->y2);
+                        }
+                    }
+                    else {
+                        LV_LOG_INFO("invalid inv buf state before pop: new_inv_buf_size(%u) < inv_buf_size(%u)",
+                                    (unsigned int)new_inv_buf_size, (unsigned int)inv_buf_size);
+                    }
+
+                    _lv_disp_pop_from_inv_buf(indev_act->driver.disp, pop_cnt);
                 }
             }
 
