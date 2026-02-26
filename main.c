@@ -347,6 +347,7 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                     //drop_down_refr_task_start();
                 }
                 if(drop_down_panel != NULL) {
+                    lv_obj_invalidate(drop_down_panel);
                     lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
                 }
                 return LV_RES_OK;
@@ -408,21 +409,21 @@ static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id)
     lv_obj_align(time_lbl, tab, LV_ALIGN_CENTER, 0, -40);
     lv_tileview_add_element(tileview, time_lbl);
     /* Let pointer events fall through to tileview's scrollable */
-    lv_obj_set_click(time_lbl, false);
+    //lv_obj_set_click(time_lbl, false);
 
     lv_obj_t * date_lbl = lv_label_create(tab, NULL);
     lv_label_set_text(date_lbl, "Wed, Feb 25");
     lv_obj_align(date_lbl, time_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
     lv_tileview_add_element(tileview, date_lbl);
     /* Let pointer events fall through to tileview's scrollable */
-    lv_obj_set_click(date_lbl, false);
+    //lv_obj_set_click(date_lbl, false);
     lv_obj_t * hint = lv_label_create(tab, NULL);
     lv_obj_set_style_local_text_color(hint, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT,
                                       LV_COLOR_MAKE(0x90, 0x90, 0x90));
     lv_label_set_text(hint, LV_SYMBOL_DOWN " swipe down for panel");
     lv_obj_align(hint, tab, LV_ALIGN_IN_BOTTOM_MID, 0, -30);
     lv_tileview_add_element(tileview, hint);
-    lv_obj_set_click(hint, false);
+    //lv_obj_set_click(hint, false);
 
     return tab;
 }
