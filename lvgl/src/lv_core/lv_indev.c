@@ -1378,7 +1378,13 @@ static void indev_drag(lv_indev_proc_t * proc)
                 lv_coord_t act_par_h = lv_obj_get_height(lv_obj_get_parent(drag_obj));
                 if(act_par_w == prev_par_w && act_par_h == prev_par_h) {
                     uint16_t new_inv_buf_size = lv_disp_get_inv_buf_size(indev_act->driver.disp);
-                    _lv_disp_pop_from_inv_buf(indev_act->driver.disp, new_inv_buf_size - inv_buf_size);
+                    uint16_t pop_cnt = new_inv_buf_size - inv_buf_size;
+                    if(pop_cnt > 0) {
+                        printf("[INDEV_DRAG] coords unchanged, popping %d inv rects "
+                               "(before=%d, after=%d, drag_just=%d)\n",
+                               pop_cnt, inv_buf_size, new_inv_buf_size, drag_just_started);
+                    }
+                    _lv_disp_pop_from_inv_buf(indev_act->driver.disp, pop_cnt);
                 }
             }
 

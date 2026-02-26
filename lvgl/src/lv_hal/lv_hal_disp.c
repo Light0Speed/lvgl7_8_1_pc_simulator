@@ -383,6 +383,19 @@ uint16_t lv_disp_get_inv_buf_size(lv_disp_t * disp)
  */
 void _lv_disp_pop_from_inv_buf(lv_disp_t * disp, uint16_t num)
 {
+    if(num > 0) {
+        uint16_t old_p = disp->inv_p;
+        uint16_t start = (old_p >= num) ? (old_p - num) : 0;
+        printf("[INV POP] removing %d rects (buf %d -> %d):\n", num, old_p, start);
+        for(uint16_t i = start; i < old_p; i++) {
+            int16_t w = disp->inv_areas[i].x2 - disp->inv_areas[i].x1 + 1;
+            int16_t h = disp->inv_areas[i].y2 - disp->inv_areas[i].y1 + 1;
+            printf("  [%d] (%d,%d)-(%d,%d) %dx%d\n", i,
+                   disp->inv_areas[i].x1, disp->inv_areas[i].y1,
+                   disp->inv_areas[i].x2, disp->inv_areas[i].y2,
+                   w, h);
+        }
+    }
 
     if(disp->inv_p < num)
         disp->inv_p = 0;

@@ -72,6 +72,7 @@ static void menu_btn_event_cb(lv_obj_t * btn, lv_event_t e);
 
 /* home page (replaces dial_create) */
 static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id);
+static lv_res_t glue_element_signal_cb(lv_obj_t * obj, lv_signal_t sign, void * param);
 
 /* drop-down bar */
 static void drop_down_refr_task_cb(lv_task_t * task);
@@ -91,6 +92,7 @@ static lv_res_t drop_down_scrl_signal_cb(lv_obj_t * scrl, lv_signal_t sign, void
  **********************/
 static lv_signal_cb_t ancestor_tileview_scrl_signal = NULL;
 static lv_signal_cb_t ancestor_dropdown_scrl_signal = NULL;
+static lv_signal_cb_t ancestor_glue_element_signal = NULL;
 static lv_point_t * menu_valid_pos = NULL;
 static lv_obj_t * leds_content = NULL;
 static lv_obj_t ** leds = NULL;
@@ -313,6 +315,14 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
         if(indev == NULL) return LV_RES_OK;
         drag_dir = indev->proc.types.pointer.drag_dir;
 
+        if(drop_down_panel != NULL || (drag_dir & LV_DRAG_DIR_VER)) {
+            uint16_t inv_now = lv_disp_get_inv_buf_size(lv_disp_get_default());
+            printf("[HANDLER] sign=%s drag_dir=%d panel=%p inv_buf=%d gesture=%d\n",
+                   sign == LV_SIGNAL_PRESSING ? "PRESSING" : "COORD_CHG",
+                   drag_dir, drop_down_panel, inv_now,
+                   lv_indev_get_gesture_dir(indev));
+        }
+
         /* ---- Horizontal loop logic ---- */
         if((drag_dir & LV_DRAG_DIR_HOR) && LAUNCHER_HOR_SLIDING_LOOP_MODE) {
             lv_coord_t x_coord = -lv_obj_get_width(tileview);
@@ -335,11 +345,23 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
             lv_indev_get_point(indev, &act_pt);
             if(lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
                 if(drop_down_panel == NULL) {
+                    uint16_t inv_before = lv_disp_get_inv_buf_size(lv_disp_get_default());
+                    printf("[SIGNAL %s] creating panel, inv_buf=%d\n",
+                           sign == LV_SIGNAL_PRESSING ? "PRESSING" : "COORD_CHG", inv_before);
                     drop_down_bar_create();
                     drop_down_refr_task_start();
+                    uint16_t inv_after = lv_disp_get_inv_buf_size(lv_disp_get_default());
+                    printf("[SIGNAL %s] panel created, inv_buf %d->%d (+%d)\n",
+                           sign == LV_SIGNAL_PRESSING ? "PRESSING" : "COORD_CHG",
+                           inv_before, inv_after, inv_after - inv_before);
                 }
                 if(drop_down_panel != NULL) {
+                    uint16_t inv_before = lv_disp_get_inv_buf_size(lv_disp_get_default());
                     lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
+                    uint16_t inv_after = lv_disp_get_inv_buf_size(lv_disp_get_default());
+                    printf("[SIGNAL %s] panel set_y=%d, inv_buf %d->%d (+%d)\n",
+                           sign == LV_SIGNAL_PRESSING ? "PRESSING" : "COORD_CHG",
+                           act_pt.y - LV_VER_RES, inv_before, inv_after, inv_after - inv_before);
                 }
                 return LV_RES_OK;
             }
@@ -387,6 +409,46 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
     return LV_RES_OK;
 }
 
+/**
+ * Custom signal callback for glued elements (labels registered with lv_tileview_add_element).
+ *
+ * Problem: indev_obj_act might be a label (not scrollable), so PRESSING signal
+ * goes to the label, not to scrollable. Our launcher_tileview_scrl_signal never
+ * receives PRESSING, and panel dirty rects are only added inside COORD_CHG
+ * (inside indev_drag), where they get deduped + popped.
+ *
+ * Fix: when a glued label receives PRESSING, forward it to the scrollable.
+ * This ensures our handler runs during PRESSING (before indev_drag),
+ * so panel dirty rects are added before inv_buf_size is recorded.
+ */
+static lv_res_t glue_element_signal_cb(lv_obj_t * obj, lv_signal_t sign, void * param)
+{
+    lv_res_t res = ancestor_glue_element_signal(obj, sign, param);
+    if(res != LV_RES_OK) return res;
+
+    if(sign == LV_SIGNAL_PRESSING) {
+        lv_obj_t * scrl = lv_page_get_scrollable(g_tileview);
+        if(scrl) {
+            launcher_tileview_scrl_signal(scrl, LV_SIGNAL_PRESSING, param);
+        }
+    }
+
+    return LV_RES_OK;
+}
+
+/**
+ * Register a tileview element and hook its signal to forward PRESSING to scrollable.
+ */
+static void tileview_add_element_with_forward(lv_obj_t * tileview, lv_obj_t * element)
+{
+    lv_tileview_add_element(tileview, element);
+
+    if(ancestor_glue_element_signal == NULL) {
+        ancestor_glue_element_signal = lv_obj_get_signal_cb(element);
+    }
+    lv_obj_set_signal_cb(element, glue_element_signal_cb);
+}
+
 /**********************
  *  Home page (replaces dial_create)
  **********************/
@@ -398,19 +460,19 @@ static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id)
     lv_obj_set_style_local_text_font(time_lbl, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &lv_font_montserrat_48);
     lv_label_set_text(time_lbl, "12:30");
     lv_obj_align(time_lbl, tab, LV_ALIGN_CENTER, 0, -40);
-    lv_tileview_add_element(tileview, time_lbl);
+    tileview_add_element_with_forward(tileview, time_lbl);
 
     lv_obj_t * date_lbl = lv_label_create(tab, NULL);
     lv_label_set_text(date_lbl, "Wed, Feb 25");
     lv_obj_align(date_lbl, time_lbl, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
-    lv_tileview_add_element(tileview, date_lbl);
+    tileview_add_element_with_forward(tileview, date_lbl);
 
     lv_obj_t * hint = lv_label_create(tab, NULL);
     lv_obj_set_style_local_text_color(hint, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT,
                                       LV_COLOR_MAKE(0x90, 0x90, 0x90));
     lv_label_set_text(hint, LV_SYMBOL_DOWN " swipe down for panel");
     lv_obj_align(hint, tab, LV_ALIGN_IN_BOTTOM_MID, 0, -30);
-    lv_tileview_add_element(tileview, hint);
+    tileview_add_element_with_forward(tileview, hint);
 
     return tab;
 }

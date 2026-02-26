@@ -136,7 +136,15 @@ void _lv_inv_area(lv_disp_t * disp, const lv_area_t * area_p)
         /*Save only if this area is not in one of the saved areas*/
         uint16_t i;
         for(i = 0; i < disp->inv_p; i++) {
-            if(_lv_area_is_in(&com_area, &disp->inv_areas[i], 0) != false) return;
+            if(_lv_area_is_in(&com_area, &disp->inv_areas[i], 0) != false) {
+                printf("[INV SKIP] (%d,%d)-(%d,%d) %dx%d already in [%d](%d,%d)-(%d,%d)\n",
+                       com_area.x1, com_area.y1, com_area.x2, com_area.y2,
+                       com_area.x2 - com_area.x1 + 1, com_area.y2 - com_area.y1 + 1,
+                       i,
+                       disp->inv_areas[i].x1, disp->inv_areas[i].y1,
+                       disp->inv_areas[i].x2, disp->inv_areas[i].y2);
+                return;
+            }
         }
 
         /*Save the area*/
@@ -147,6 +155,10 @@ void _lv_inv_area(lv_disp_t * disp, const lv_area_t * area_p)
             disp->inv_p = 0;
             lv_area_copy(&disp->inv_areas[disp->inv_p], &scr_area);
         }
+        printf("[INV +] [%d] (%d,%d)-(%d,%d) %dx%d\n",
+               disp->inv_p,
+               com_area.x1, com_area.y1, com_area.x2, com_area.y2,
+               com_area.x2 - com_area.x1 + 1, com_area.y2 - com_area.y1 + 1);
         disp->inv_p++;
         lv_task_set_prio(disp->refr_task, LV_REFR_TASK_PRIO);
     }
@@ -394,6 +406,20 @@ static void lv_refr_areas(void)
 
     disp_refr->driver.buffer->last_area = 0;
     disp_refr->driver.buffer->last_part = 0;
+
+    if(disp_refr->inv_p > 0) {
+        printf("[RENDER] %d rects total:", disp_refr->inv_p);
+        for(i = 0; i < disp_refr->inv_p; i++) {
+            if(disp_refr->inv_area_joined[i] == 0) {
+                printf(" [%d](%d,%d)-(%d,%d)", (int)i,
+                       disp_refr->inv_areas[i].x1, disp_refr->inv_areas[i].y1,
+                       disp_refr->inv_areas[i].x2, disp_refr->inv_areas[i].y2);
+            } else {
+                printf(" [%d]J", (int)i);
+            }
+        }
+        printf("\n");
+    }
 
     for(i = 0; i < disp_refr->inv_p; i++) {
         /*Refresh the unjoined areas*/
