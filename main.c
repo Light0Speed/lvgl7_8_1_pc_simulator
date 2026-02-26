@@ -74,7 +74,9 @@ static void menu_btn_event_cb(lv_obj_t * btn, lv_event_t e);
 static lv_obj_t * home_page_create(lv_obj_t * tileview, uint16_t id);
 
 /* drop-down bar */
-static void fix_children_coords(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy);
+static void drop_down_refr_task_cb(lv_task_t * task);
+static void drop_down_refr_task_start(void);
+static void drop_down_refr_task_stop(void);
 static void drop_down_bar_create(void);
 static void drop_down_bar_fill_content(lv_obj_t * parent);
 static void drop_down_show_anim_cb(void * var, lv_anim_value_t val);
@@ -94,6 +96,7 @@ static lv_obj_t * leds_content = NULL;
 static lv_obj_t ** leds = NULL;
 static lv_obj_t * g_tileview = NULL;
 static lv_obj_t * drop_down_panel = NULL;
+static lv_task_t * drop_down_refr_task = NULL;
 
 static sim_app_info_t sim_apps[] = {
     { LV_SYMBOL_SETTINGS,   "Settings",   menu_btn_event_cb },
@@ -279,22 +282,6 @@ static void launcher_leds_update(lv_obj_t * tileview)
                    LV_VER_RES - lv_obj_get_height(leds_content) - 5);
 }
 
-/**
- * Recursively fix coords of all descendants without triggering invalidate.
- * Mirrors refresh_children_position in lv_obj.c but silent (no signals, no invalidate).
- */
-static void fix_children_coords(lv_obj_t * obj, lv_coord_t dx, lv_coord_t dy)
-{
-    lv_obj_t * child;
-    _LV_LL_READ(obj->child_ll, child) {
-        child->coords.x1 += dx;
-        child->coords.y1 += dy;
-        child->coords.x2 += dx;
-        child->coords.y2 += dy;
-        fix_children_coords(child, dx, dy);
-    }
-}
-
 /**********************
  *  launcher_tileview_scrl_signal
  *  Ported from launcher.c lines 325-462
@@ -319,13 +306,13 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
     lv_point_t act_pt;
     lv_drag_dir_t drag_dir;
 
+    ancestor_tileview_scrl_signal(tile_scrl, sign, param);
+
     if((LV_SIGNAL_PRESSING == sign) || (LV_SIGNAL_COORD_CHG == sign)) {
         lv_indev_t * indev = lv_indev_get_act();
-        if(indev == NULL) {
-            ancestor_tileview_scrl_signal(tile_scrl, sign, param);
-            return LV_RES_OK;
-        }
+        if(indev == NULL) return LV_RES_OK;
         drag_dir = indev->proc.types.pointer.drag_dir;
+
 
         /*
          * ★ 关键修复：当处于下拉模式时，不调用 ancestor_tileview_scrl_signal。
@@ -418,10 +405,26 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                 }
             }
         }
+
+        /* ---- Vertical gesture: drop-down bar follows finger ---- */
+        if(drag_dir & LV_DRAG_DIR_VER) {
+            lv_indev_get_point(indev, &act_pt);
+            if(lv_indev_get_gesture_dir(indev) == LV_GESTURE_DIR_BOTTOM) {
+                if(drop_down_panel == NULL) {
+                    drop_down_bar_create();
+                    drop_down_refr_task_start();
+                }
+                if(drop_down_panel != NULL) {
+                    lv_obj_set_y(drop_down_panel, act_pt.y - LV_VER_RES);
+                }
+                return LV_RES_OK;
+            }
+        }
         return LV_RES_OK;
 
     } else if(LV_SIGNAL_PRESS_LOST == sign || LV_SIGNAL_RELEASED == sign) {
         if(drop_down_panel != NULL) {
+            drop_down_refr_task_stop();
             lv_indev_t * indev = lv_indev_get_act();
             if(indev != NULL) {
                 lv_indev_get_point(indev, &act_pt);
@@ -431,24 +434,30 @@ static lv_res_t launcher_tileview_scrl_signal(lv_obj_t * tile_scrl, lv_signal_t 
                     drop_down_dismiss();
                 }
             }
-            /* 结束拖拽，让 indev 不再继续抛掷 scrollable */
-            lv_indev_finish_drag(lv_indev_get_act());
-            return LV_RES_OK;
         }
-        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
         return LV_RES_OK;
 
     } else if(LV_SIGNAL_DRAG_END == sign || LV_SIGNAL_DRAG_THROW_BEGIN == sign) {
+        /*
+         * 当手指按在 date_lbl/time_lbl 上下拉时：
+         * RELEASED 信号发给 indev_obj_act (= date_lbl)，不是 scrollable，
+         * 所以上面的 RELEASED 分支收不到。
+         * 但 DRAG_THROW_BEGIN 发给 get_dragged_obj() = scrollable，能收到。
+         */
         if(drop_down_panel != NULL) {
-            /* 下拉模式下吞掉 drag_end/throw，不让 tileview 处理 */
-            lv_indev_finish_drag(lv_indev_get_act());
-            return LV_RES_OK;
+            drop_down_refr_task_stop();
+            lv_indev_t * indev = lv_indev_get_act();
+            if(indev != NULL) {
+                lv_indev_get_point(indev, &act_pt);
+                if(act_pt.y >= LV_VER_RES / 2) {
+                    drop_down_snap_back();
+                } else {
+                    drop_down_dismiss();
+                }
+            }
+            lv_indev_finish_drag(indev);
         }
-        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
         return LV_RES_OK;
-
-    } else {
-        ancestor_tileview_scrl_signal(tile_scrl, sign, param);
     }
 
     return LV_RES_OK;
@@ -602,6 +611,34 @@ static void menu_btn_event_cb(lv_obj_t * btn, lv_event_t e)
     }
 }
 
+/**
+ * lv_task callback: periodically invalidate the drop-down panel
+ * to fix dirty rectangles caused by tileview scrollable fighting.
+ */
+static void drop_down_refr_task_cb(lv_task_t * task)
+{
+    (void)task;
+    if(drop_down_panel != NULL) {
+        lv_obj_invalidate(drop_down_panel);
+    }
+}
+
+static void drop_down_refr_task_start(void)
+{
+    if(drop_down_refr_task == NULL) {
+        drop_down_refr_task = lv_task_create(drop_down_refr_task_cb, 10,
+                                             LV_TASK_PRIO_HIGH, NULL);
+    }
+}
+
+static void drop_down_refr_task_stop(void)
+{
+    if(drop_down_refr_task != NULL) {
+        lv_task_del(drop_down_refr_task);
+        drop_down_refr_task = NULL;
+    }
+}
+
 /**********************
  *   DROP-DOWN BAR
  **********************/
@@ -609,12 +646,7 @@ static void drop_down_bar_create(void)
 {
     if(drop_down_panel != NULL) return;
 
-    /*
-     * ★ 创建在 layer_top 上而非 lv_scr_act()。
-     * 根因：下拉时 tileview scrollable 也在被拖拽改坐标，两者同时 invalidate
-     * 导致脏矩形交叉→残影/不全。layer_top 有独立的渲染层，避免此问题。
-     */
-    drop_down_panel = lv_obj_create(lv_disp_get_layer_top(NULL), NULL);
+    drop_down_panel = lv_obj_create(lv_scr_act(), NULL);
     lv_obj_set_size(drop_down_panel, LV_HOR_RES, LV_VER_RES);
     lv_obj_set_y(drop_down_panel, -LV_VER_RES);
     lv_obj_set_style_local_bg_color(drop_down_panel, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT,
@@ -688,6 +720,7 @@ static void drop_down_show_anim_cb(void * var, lv_anim_value_t val) { lv_obj_set
 
 static void drop_down_destroy_anim_end(lv_anim_t * a)
 {
+    drop_down_refr_task_stop();
     lv_obj_t * p = (lv_obj_t *)a->var;
     if(p) lv_obj_del(p);
     drop_down_panel = NULL;
